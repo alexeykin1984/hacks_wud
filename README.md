@@ -64,7 +64,51 @@ the integration.
   only the newest release is shown.
 - Containers removed from WUD become unavailable and are cleaned up on the next
   Home Assistant restart. Their devices can also be deleted manually.
-- Updating the WUD container itself requires the trigger's `SELFUPDATE` option.
+- WUD does not update its own container by default, see
+  [Updating WUD itself](#updating-wud-itself).
+
+## Updating WUD itself
+
+By default WUD refuses to update the container it runs in: stopping it would
+abort the update and leave WUD down. Pressing *Install* on the WUD update then
+fails with *"Refusing to update the container WUD runs in…"*. Pick one of two ways.
+
+**Option 1 — let WUD update itself.** Add the `SELFUPDATE` option to the trigger
+in the `docker-compose.yml` of WUD. The variable name contains the trigger type and
+name; for the `dockercompose.app` trigger:
+
+```yaml
+services:
+  wud:
+    environment:
+      - WUD_TRIGGER_DOCKERCOMPOSE_APP_SELFUPDATE=true
+```
+
+For a `docker` trigger named `local` it is `WUD_TRIGGER_DOCKER_LOCAL_SELFUPDATE=true`.
+Apply it once by hand with `docker compose up -d wud`; after that the *Install*
+button works for WUD too.
+
+WUD then hands the update over to a short-lived `wud-self-update` helper container:
+it starts the new WUD, waits for it to become healthy and removes the old one, or
+restores the old one if something goes wrong. The helper's log tells what happened:
+`docker logs wud-self-update`. While WUD restarts the integration is briefly
+unavailable and reconnects on its own.
+
+Self-update needs WUD to talk to Docker through the socket
+(`/var/run/docker.sock`); it is not supported for watchers configured with
+`WUD_WATCHER_{name}_HOST`.
+
+**Option 2 — update WUD by hand.** Exclude WUD from the trigger with a label:
+
+```yaml
+services:
+  wud:
+    labels:
+      - wud.trigger.exclude=dockercompose.app
+```
+
+The update is still shown in Home Assistant, just without the *Install* button.
+Apply it with `docker compose pull wud && docker compose up -d wud`.
 
 ## How the progress is calculated
 
