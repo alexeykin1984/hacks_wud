@@ -88,3 +88,8 @@ pip install -r requirements_test.txt ruff
 pytest --cov=custom_components.wud   # тесты (WUD и GitHub подменяются заглушками)
 ruff check . && ruff format --check .
 ```
+
+## Лицензия
+
+MIT. Логотип WUD в `custom_components/wud/brand/` взят из
+[проекта WUD](https://github.com/getwud/wud) (MIT, © Manfred Martin).

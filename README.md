@@ -70,3 +70,8 @@ pip install -r requirements_test.txt ruff
 pytest --cov=custom_components.wud   # unit/integration tests (mocked WUD + GitHub)
 ruff check . && ruff format --check .
 ```
+
+## License
+
+MIT. The WUD logo in `custom_components/wud/brand/` comes from the
+[WUD project](https://github.com/getwud/wud) (MIT, © Manfred Martin).
