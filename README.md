@@ -1,5 +1,7 @@
 # WUD (What's Up Docker) for Home Assistant
 
+[Инструкция на русском](README.ru.md)
+
 Custom integration (installable through HACS) that connects Home Assistant to the
 [WUD](https://github.com/getwud/wud) REST API and creates one `update` entity per
 watched container.
@@ -41,8 +43,8 @@ watched container.
 
 ## Installation
 
-1. HACS → Integrations → ⋮ → *Custom repositories* → add this repository
-   (category *Integration*), then install **WUD (What's Up Docker)**.
+1. HACS → Integrations → ⋮ → *Custom repositories* → add
+   `https://github.com/alexeykin1984/hacks_wud` (category *Integration*), then install **WUD (What's Up Docker)**.
    Or copy `custom_components/wud` to `<config>/custom_components/`.
 2. Restart Home Assistant.
 3. Settings → Devices & services → *Add integration* → **WUD**.
