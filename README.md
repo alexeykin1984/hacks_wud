@@ -43,7 +43,8 @@ watched container.
   `ghcr.io` image name.
 - **Icons** — from the container `displayIcon` (`wud.display.icon` label), using the
   WUD UI conventions: `mdi:` icons natively, `sh:`/`selfhst:`/`hl:`, `si:`, `fa*:`
-  and any Iconify `prefix:name` or URL as entity picture.
+  and any Iconify `prefix:name` or URL as entity picture. Containers without an icon
+  of their own (WUD's default `mdi:docker`) get the WUD icon.
 - **Live updates** — changes are pushed through the SSE event stream; a full poll
   (default every 5 min) resynchronizes everything.
 

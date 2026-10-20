@@ -177,9 +177,10 @@ def resolve_icon(display_icon: Any) -> tuple[str | None, str | None]:
     """Map a WUD displayIcon to an HA (icon, entity_picture) pair.
 
     Same conventions as the WUD UI (ui/src/components/IconRenderer.vue).
+    (None, None) means no icon of its own: WUD falls back to mdi:docker.
     """
     if not isinstance(display_icon, str) or not display_icon.strip():
-        return DEFAULT_ICON, None
+        return None, None
     raw = display_icon.strip()
     lower = raw.lower()
     if lower.startswith(("http://", "https://", "data:image/")):
@@ -193,7 +194,8 @@ def resolve_icon(display_icon: Any) -> tuple[str | None, str | None]:
         return None
 
     if name := split(("mdi",)):
-        return f"mdi:{name}", None
+        icon = f"mdi:{name}"
+        return (None, None) if icon == DEFAULT_ICON else (icon, None)
     if name := split(("selfhst", "sh", "hl")):
         return None, f"https://cdn.jsdelivr.net/gh/selfhst/icons/png/{name}.png"
     if name := split(("simple-icons", "si")):
@@ -276,9 +278,19 @@ class WudUpdateEntity(CoordinatorEntity[WudCoordinator], UpdateEntity):
 
     @property
     def entity_picture(self) -> str | None:
-        # UpdateEntity defaults to the integration brand icon; use the
-        # container's own picture, or none so that its mdi icon is shown.
-        return self._attr_entity_picture
+        # The container's own picture, none so that its mdi icon is shown,
+        # or the WUD brand icon when the container has no icon of its own.
+        if self._attr_entity_picture or self._attr_icon:
+            return self._attr_entity_picture
+        brand = super().entity_picture
+        # Older HA versions point to brands.home-assistant.io, which has no WUD icon
+        return brand if brand and brand.startswith("/api/brands/") else None
+
+    @property
+    def icon(self) -> str | None:
+        if self._attr_icon or self.entity_picture:
+            return self._attr_icon
+        return DEFAULT_ICON
 
     @property
     def available(self) -> bool:

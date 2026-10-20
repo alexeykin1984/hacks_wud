@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import copy
 from typing import Any
+from unittest.mock import patch
 
 from homeassistant.components.update import (
     ATTR_IN_PROGRESS,
@@ -15,6 +16,7 @@ from homeassistant.components.update import (
     ATTR_UPDATE_PERCENTAGE,
     DOMAIN as UPDATE_DOMAIN,
     SERVICE_INSTALL,
+    UpdateEntity,
     UpdateEntityFeature,
 )
 from homeassistant.const import (
@@ -70,10 +72,12 @@ TRIGGER_URL = f"{URL}/api/containers/{MATTER_ID}/triggers/dockercompose/app"
 @pytest.mark.parametrize(
     ("icon", "expected"),
     [
-        (None, ("mdi:docker", None)),
-        ("", ("mdi:docker", None)),
+        (None, (None, None)),
+        ("", (None, None)),
+        ("mdi:docker", (None, None)),  # WUD default
+        ("mdi-docker", (None, None)),
         ("mdi:home-assistant", ("mdi:home-assistant", None)),
-        ("mdi-docker", ("mdi:docker", None)),
+        ("mdi-server", ("mdi:server", None)),
         ("si:portainer", (None, "https://cdn.simpleicons.org/portainer")),
         ("si-grafana", (None, "https://cdn.simpleicons.org/grafana")),
         (
@@ -142,8 +146,9 @@ async def test_entities(
     assert attrs[ATTR_INSTALLED_VERSION] == "1.4.0"
     assert attrs[ATTR_LATEST_VERSION] == "1.5.0"
     assert attrs[ATTR_TITLE] == "matterjs-server"
-    assert attrs[ATTR_ICON] == "mdi:docker"
-    assert attrs.get(ATTR_ENTITY_PICTURE) is None
+    # No icon of its own (WUD default mdi:docker): WUD brand icon
+    assert attrs.get(ATTR_ICON) is None
+    assert attrs[ATTR_ENTITY_PICTURE] == "/api/brands/integration/wud/icon.png"
     assert attrs[ATTR_SUPPORTED_FEATURES] == (
         UpdateEntityFeature.INSTALL
         | UpdateEntityFeature.PROGRESS
@@ -174,6 +179,38 @@ async def test_entities(
     assert state.attributes[ATTR_RELEASE_URL].endswith("/releases/2.45.2")
     assert state.attributes["error"] == "registry timeout"
     assert "trigger" not in state.attributes
+
+
+async def test_custom_mdi_icon(
+    hass: HomeAssistant, setup_integration: MockConfigEntry
+) -> None:
+    coordinator = setup_integration.runtime_data
+    data = copy.deepcopy(coordinator.data)
+    data["local/matterjs-server"]["displayIcon"] = "mdi:server"
+    coordinator.async_set_updated_data(data)
+    await hass.async_block_till_done()
+    attrs = hass.states.get(MATTER_ENTITY).attributes
+    assert attrs[ATTR_ICON] == "mdi:server"
+    assert attrs.get(ATTR_ENTITY_PICTURE) is None
+
+
+async def test_no_local_brand_falls_back_to_docker_icon(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+    wud: WudState,
+    no_events: None,
+) -> None:
+    # Older HA versions point the brand picture to brands.home-assistant.io
+    with patch.object(
+        UpdateEntity,
+        "entity_picture",
+        property(lambda self: "https://brands.home-assistant.io/_/wud/icon.png"),
+    ):
+        assert await hass.config_entries.async_setup(config_entry.entry_id)
+        await hass.async_block_till_done(wait_background_tasks=True)
+        attrs = hass.states.get(MATTER_ENTITY).attributes
+    assert attrs[ATTR_ICON] == "mdi:docker"
+    assert attrs.get(ATTR_ENTITY_PICTURE) is None
 
 
 async def test_devices(hass: HomeAssistant, setup_integration: MockConfigEntry) -> None:
