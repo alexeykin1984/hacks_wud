@@ -32,7 +32,9 @@ watched container.
   Between stages the value creeps towards the next one, so it keeps moving during
   long pulls. The current stage is exposed as the `update_stage` attribute.
 - **Release notes from GitHub** — summary (255 chars) on the entity and full notes
-  in the update dialog. The repository is resolved like WUD's MQTT integration does:
+  in the update dialog. For tag updates the dialog shows every release in between
+  (e.g. `1.2.0` → `1.4.0` lists 1.4.0, 1.3.x and 1.3.0, newest first, up to 20;
+  pre-releases only when updating to a pre-release). The repository is resolved like WUD's MQTT integration does:
   `org.opencontainers.image.source` label → release link (`wud.link.template`) →
   `ghcr.io` image name.
 - **Icons** — from the container `displayIcon` (`wud.display.icon` label), using the

@@ -11,17 +11,35 @@ import pytest
 from pytest_homeassistant_custom_component.test_util.aiohttp import AiohttpClientMocker
 
 from custom_components.wud.github import (
+    CHANGELOG_MAX_RELEASES,
     RELEASE_SUMMARY_MAX_LENGTH,
     GithubReleases,
+    Release,
+    format_release_notes,
+    installed_tag,
     parse_github_repository,
     release_tag,
     resolve_github_repository,
+    select_releases,
     to_release_summary,
 )
 
-from .const import GITHUB_RELEASE, MATTER
+from .const import GITHUB_RELEASE, GITHUB_RELEASE_LIST, MATTER
 
 RELEASES = "https://api.github.com/repos/matter-js/matterjs-server/releases/tags"
+RELEASE_LIST = (
+    "https://api.github.com/repos/matter-js/matterjs-server/releases?per_page=100"
+)
+
+
+def _release(tag: str, prerelease: bool = False, body: str | None = None) -> Release:
+    return Release(
+        tag=tag,
+        name=tag,
+        body=body if body is not None else f"notes {tag}",
+        url=f"https://github.com/o/r/releases/tag/{tag}",
+        prerelease=prerelease,
+    )
 
 
 @pytest.mark.parametrize(
@@ -149,4 +167,122 @@ async def test_no_target_no_request(
 ) -> None:
     github = GithubReleases(async_get_clientsession(hass), None)
     assert await github.get({**MATTER, "updateAvailable": False}) is None
+    assert aioclient_mock.call_count == 0
+
+
+def test_installed_tag() -> None:
+    assert installed_tag(MATTER) == "1.4.0"
+    assert installed_tag({**MATTER, "updateKind": {"kind": "digest"}}) is None
+
+
+def test_select_releases_range_and_order() -> None:
+    releases = [
+        _release("v1.3.0"),
+        _release("v1.5.0"),
+        _release("1.4.10"),
+        _release("v1.4.0"),
+        _release("v1.4.2"),
+        _release("v1.6.0"),
+        _release("server-v1.4.5"),
+    ]
+    assert [r.tag for r in select_releases(releases, "1.4.0", "1.5.0")] == [
+        "v1.5.0",
+        "1.4.10",
+        "v1.4.2",
+    ]
+
+
+def test_select_releases_prereleases() -> None:
+    releases = [
+        _release("v2.0.0-beta.2", prerelease=True),
+        _release("v2.0.0-beta.1", prerelease=True),
+        _release("v1.9.0-rc1"),
+        _release("v1.9.0"),
+        _release("v1.8.1-ls12"),  # linuxserver build suffix, not a pre-release
+    ]
+    # Stable target: pre-releases skipped
+    assert [r.tag for r in select_releases(releases, "1.8.0", "1.9.0")] == [
+        "v1.9.0",
+        "v1.8.1-ls12",
+    ]
+    # Pre-release target: pre-releases kept
+    assert [r.tag for r in select_releases(releases, "1.9.0", "2.0.0-beta.2")] == [
+        "v2.0.0-beta.2",
+        "v2.0.0-beta.1",
+    ]
+
+
+def test_select_releases_incomparable() -> None:
+    releases = [_release("v1.5.0")]
+    assert select_releases(releases, "latest", "1.5.0") == []
+    assert select_releases(releases, "1.4.0", "nightly-5") == []
+
+
+def test_format_release_notes() -> None:
+    assert format_release_notes([], None) is None
+    single = _release("v1.5.0")
+    assert format_release_notes([single], None) == (
+        f"notes v1.5.0\n\n[v1.5.0 on GitHub]({single.url})"
+    )
+    no_body = Release(tag="v1.4.1", name="Bugfixes", body="", url=None)
+    assert format_release_notes([single, no_body], None) == (
+        f"## [v1.5.0]({single.url})\n\nnotes v1.5.0\n\n---\n\n## v1.4.1\n\nBugfixes"
+    )
+
+
+def test_format_release_notes_truncated() -> None:
+    releases = [_release(f"v1.{i}.0") for i in range(CHANGELOG_MAX_RELEASES + 3, 0, -1)]
+    notes = format_release_notes(releases, "https://github.com/o/r/releases")
+    assert notes is not None
+    assert notes.count("## ") == CHANGELOG_MAX_RELEASES
+    assert notes.endswith(
+        "… and [3 more releases](https://github.com/o/r/releases) on GitHub"
+    )
+
+
+async def test_changelog(
+    hass: HomeAssistant, aioclient_mock: AiohttpClientMocker
+) -> None:
+    aioclient_mock.get(f"{RELEASES}/1.5.0", status=404)
+    aioclient_mock.get(f"{RELEASES}/v1.5.0", json=GITHUB_RELEASE)
+    aioclient_mock.get(RELEASE_LIST, json=GITHUB_RELEASE_LIST)
+    github = GithubReleases(async_get_clientsession(hass), None)
+
+    releases = await github.changelog(MATTER)
+    assert [r.tag for r in releases] == ["v1.5.0", "v1.4.1"]
+    calls = aioclient_mock.call_count
+    assert await github.changelog(MATTER) == releases
+    assert aioclient_mock.call_count == calls
+
+
+async def test_changelog_digest_update_only_latest(
+    hass: HomeAssistant, aioclient_mock: AiohttpClientMocker
+) -> None:
+    aioclient_mock.get(f"{RELEASES}/1.5.0", status=404)
+    aioclient_mock.get(f"{RELEASES}/v1.5.0", json=GITHUB_RELEASE)
+    github = GithubReleases(async_get_clientsession(hass), None)
+    digest = {
+        **MATTER,
+        "updateKind": {"kind": "digest"},
+        "result": {"tag": "latest", "version": "1.5.0"},
+    }
+    assert [r.tag for r in await github.changelog(digest)] == ["v1.5.0"]
+    assert aioclient_mock.call_count == 2  # no release list request
+
+
+async def test_changelog_list_unavailable_falls_back_to_latest(
+    hass: HomeAssistant, aioclient_mock: AiohttpClientMocker
+) -> None:
+    aioclient_mock.get(f"{RELEASES}/1.5.0", status=404)
+    aioclient_mock.get(f"{RELEASES}/v1.5.0", json=GITHUB_RELEASE)
+    aioclient_mock.get(RELEASE_LIST, status=500)
+    github = GithubReleases(async_get_clientsession(hass), None)
+    assert [r.tag for r in await github.changelog(MATTER)] == ["v1.5.0"]
+
+
+async def test_changelog_no_target(
+    hass: HomeAssistant, aioclient_mock: AiohttpClientMocker
+) -> None:
+    github = GithubReleases(async_get_clientsession(hass), None)
+    assert await github.changelog({**MATTER, "updateAvailable": False}) == []
     assert aioclient_mock.call_count == 0

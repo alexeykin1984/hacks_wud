@@ -50,6 +50,7 @@ from .conftest import WudState
 from .const import (
     EXPLORER,
     GITHUB_RELEASE,
+    GITHUB_RELEASE_141,
     MATTER,
     MATTER_ID,
     MATTER_NEW_ID,
@@ -198,8 +199,11 @@ async def test_release_notes(
     )
     result = await client.receive_json()
     assert result["success"]
+    # 1.4.0 -> 1.5.0: intermediate 1.4.1 included, beta and draft skipped
     assert result["result"] == (
-        f"{GITHUB_RELEASE['body']}\n\n[v1.5.0 on GitHub]({GITHUB_RELEASE['html_url']})"
+        f"## [v1.5.0]({GITHUB_RELEASE['html_url']})\n\n{GITHUB_RELEASE['body']}"
+        "\n\n---\n\n"
+        f"## [v1.4.1]({GITHUB_RELEASE_141['html_url']})\n\n{GITHUB_RELEASE_141['body']}"
     )
 
 

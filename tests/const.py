@@ -104,6 +104,36 @@ GITHUB_RELEASE = {
     "html_url": "https://github.com/matter-js/matterjs-server/releases/tag/v1.5.0",
 }
 
+GITHUB_RELEASE_141 = {
+    "tag_name": "v1.4.1",
+    "name": "v1.4.1",
+    "body": "Fix pairing timeout",
+    "html_url": "https://github.com/matter-js/matterjs-server/releases/tag/v1.4.1",
+}
+
+# GET /repos/matter-js/matterjs-server/releases (newest first)
+GITHUB_RELEASE_LIST = [
+    {**GITHUB_RELEASE, "prerelease": False, "draft": False},
+    {
+        "tag_name": "v1.5.0-beta.1",
+        "name": "v1.5.0-beta.1",
+        "body": "Beta",
+        "html_url": "https://github.com/matter-js/matterjs-server/releases/tag/v1.5.0-beta.1",
+        "prerelease": True,
+        "draft": False,
+    },
+    {**GITHUB_RELEASE_141, "prerelease": False, "draft": False},
+    {
+        "tag_name": "v1.4.0",
+        "name": "v1.4.0",
+        "body": "Installed",
+        "html_url": "https://github.com/matter-js/matterjs-server/releases/tag/v1.4.0",
+        "prerelease": False,
+        "draft": False,
+    },
+    {"tag_name": "v1.6.0", "name": "Draft", "body": "WIP", "draft": True},
+]
+
 
 def containers() -> list[dict[str, Any]]:
     """Fresh copy of the default container list."""

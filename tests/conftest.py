@@ -21,6 +21,7 @@ from .const import (
     CONFIG_DATA,
     EXPLORER,
     GITHUB_RELEASE,
+    GITHUB_RELEASE_LIST,
     MATTER,
     PORTAINER,
     TRIGGER_COMPOSE,
@@ -76,6 +77,10 @@ def wud(aioclient_mock: AiohttpClientMocker) -> WudState:
     )
     aioclient_mock.get(f"{GITHUB_RELEASES}/1.5.0", status=404)
     aioclient_mock.get(f"{GITHUB_RELEASES}/v1.5.0", json=GITHUB_RELEASE)
+    aioclient_mock.get(
+        "https://api.github.com/repos/matter-js/matterjs-server/releases?per_page=100",
+        json=GITHUB_RELEASE_LIST,
+    )
     # Portainer is only associated with a notification trigger
     aioclient_mock.get(
         f"{URL}/api/containers/{PORTAINER['id']}/triggers", json=[TRIGGER_MQTT]

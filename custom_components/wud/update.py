@@ -28,7 +28,12 @@ from .const import (
     UPDATE_TRIGGER_TYPES,
 )
 from .coordinator import WudConfigEntry, WudCoordinator, container_key
-from .github import release_tag, resolve_github_repository
+from .github import (
+    format_release_notes,
+    release_tag,
+    releases_page,
+    resolve_github_repository,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -368,13 +373,8 @@ class WudUpdateEntity(CoordinatorEntity[WudCoordinator], UpdateEntity):
         container = self.container
         if container is None:
             return None
-        release = await self.coordinator.github.get(container)
-        if release is None:
-            return None
-        notes = release.body or release.name
-        if notes and release.url:
-            notes = f"{notes}\n\n[{release.tag} on GitHub]({release.url})"
-        return notes
+        releases = await self.coordinator.github.changelog(container)
+        return format_release_notes(releases, releases_page(container))
 
     # -------------------------------------------------------------- install
 
