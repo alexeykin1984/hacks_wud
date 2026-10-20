@@ -11,6 +11,10 @@ watched container.
 - **Update entity per container** — installed / latest version (tag, or tag + short
   digest for digest-watched images), semver diff, watcher, stack, status, errors as
   attributes.
+- **Device per container** — each container is its own device (named after the
+  container, model = image, version = installed tag), linked to the WUD hub device.
+  New container devices are placed in the hub's area. This is what the
+  *Settings → Updates* list shows as the title of each update.
 - **Install button** — runs the update trigger WUD associates with the container
   (`GET /api/containers/{id}/triggers`, preferring `docker` / `dockercompose`, then
   `command` / `nomad`), honoring `wud.trigger.include` / `wud.trigger.exclude` the
@@ -60,8 +64,8 @@ rate limit used for release notes).
 
 - The install button only appears when WUD has an update trigger
   (`docker`, `dockercompose`, `command`, `nomad`) associated with the container.
-- Entities of containers that disappeared from WUD become unavailable and are
-  removed on the next Home Assistant restart.
+- Entities and devices of containers that disappeared from WUD become unavailable
+  and are removed on the next Home Assistant restart (or delete the device manually).
 - Updating the WUD container itself requires the trigger's `SELFUPDATE` option.
 
 ## Development

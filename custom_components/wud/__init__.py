@@ -13,10 +13,16 @@ from homeassistant.const import (
     Platform,
 )
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .api import WudApiClient
-from .const import CONF_GITHUB_TOKEN, CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL
+from .const import (
+    CONF_GITHUB_TOKEN,
+    CONF_SCAN_INTERVAL,
+    DEFAULT_SCAN_INTERVAL,
+    DOMAIN,
+)
 from .coordinator import WudConfigEntry, WudCoordinator
 from .github import GithubReleases
 
@@ -48,6 +54,18 @@ async def async_setup_entry(hass: HomeAssistant, entry: WudConfigEntry) -> bool:
     await coordinator.async_config_entry_first_refresh()
     entry.runtime_data = coordinator
 
+    # Hub device; every container is a device linked to it
+    hub = dr.async_get(hass).async_get_or_create(
+        config_entry_id=entry.entry_id,
+        identifiers={(DOMAIN, entry.entry_id)},
+        name=entry.title,
+        manufacturer="getwud",
+        model="What's Up Docker",
+        sw_version=coordinator.version,
+        configuration_url=api.url,
+    )
+    coordinator.hub_device_id = hub.id
+
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     entry.async_create_background_task(
         hass, coordinator.async_listen_events(), "wud event stream"
@@ -63,3 +81,15 @@ async def _async_reload(hass: HomeAssistant, entry: WudConfigEntry) -> None:
 async def async_unload_entry(hass: HomeAssistant, entry: WudConfigEntry) -> bool:
     """Unload a config entry."""
     return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+
+
+async def async_remove_config_entry_device(
+    hass: HomeAssistant, entry: WudConfigEntry, device: dr.DeviceEntry
+) -> bool:
+    """Allow removing devices of containers no longer known by WUD."""
+    if (DOMAIN, entry.entry_id) in device.identifiers:
+        return False
+    current = {f"{entry.entry_id}_{key}" for key in entry.runtime_data.data}
+    return not any(
+        domain == DOMAIN and ident in current for domain, ident in device.identifiers
+    )

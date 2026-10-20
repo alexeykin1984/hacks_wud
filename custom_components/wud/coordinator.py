@@ -60,6 +60,7 @@ class WudCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
         self.api = api
         self.github = github
         self.version: str | None = None
+        self.hub_device_id: str | None = None
         self._event_listeners: list[ContainerEventListener] = []
         self.events_connected = False
 

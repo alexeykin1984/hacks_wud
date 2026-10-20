@@ -12,17 +12,18 @@ from homeassistant.components.update import ATTR_INSTALLED_VERSION
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.const import STATE_OFF
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers import device_registry as dr, entity_registry as er
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 from pytest_homeassistant_custom_component.test_util.aiohttp import AiohttpClientMocker
 
+from custom_components.wud import async_remove_config_entry_device
 from custom_components.wud.const import CONF_SCAN_INTERVAL, DOMAIN
 
 from .conftest import WudState
 from .const import APP, EXPLORER, MATTER, MATTER_NEW_ID, URL
 
-MATTER_ENTITY = "update.wud_matterjs_server"
+MATTER_ENTITY = "update.matterjs_server"
 
 
 async def test_setup_and_unload(
@@ -80,6 +81,42 @@ async def test_stale_entities_removed(
     assert registry.async_get(MATTER_ENTITY) is not None
 
 
+async def test_stale_devices_removed(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+    wud: WudState,
+    no_events: None,
+) -> None:
+    devices = dr.async_get(hass)
+    stale = devices.async_get_or_create(
+        config_entry_id=config_entry.entry_id,
+        identifiers={(DOMAIN, f"{config_entry.entry_id}_local/gone")},
+    )
+    assert await hass.config_entries.async_setup(config_entry.entry_id)
+    await hass.async_block_till_done()
+    assert devices.async_get(stale.id) is None
+    assert devices.async_get_device_by_identifier(
+        (DOMAIN, config_entry.entry_id), config_entry.entry_id
+    )
+
+
+async def test_remove_config_entry_device(
+    hass: HomeAssistant, setup_integration: MockConfigEntry
+) -> None:
+    entry_id = setup_integration.entry_id
+    devices = dr.async_get(hass)
+    hub = devices.async_get_device_by_identifier((DOMAIN, entry_id), entry_id)
+    matter = devices.async_get_device_by_identifier(
+        (DOMAIN, f"{entry_id}_local/matterjs-server"), entry_id
+    )
+    gone = devices.async_get_or_create(
+        config_entry_id=entry_id, identifiers={(DOMAIN, f"{entry_id}_local/gone")}
+    )
+    assert not await async_remove_config_entry_device(hass, setup_integration, hub)
+    assert not await async_remove_config_entry_device(hass, setup_integration, matter)
+    assert await async_remove_config_entry_device(hass, setup_integration, gone)
+
+
 async def test_options_reload(
     hass: HomeAssistant, setup_integration: MockConfigEntry
 ) -> None:
@@ -117,7 +154,7 @@ async def test_event_adds_new_entity(
         {"type": "wud:container-added", "data": new}
     )
     await hass.async_block_till_done(wait_background_tasks=True)
-    assert hass.states.get("update.wud_grafana") is not None
+    assert hass.states.get("update.grafana") is not None
 
 
 async def test_remove_of_replaced_container_is_ignored(

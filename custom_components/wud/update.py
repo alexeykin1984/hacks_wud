@@ -12,7 +12,7 @@ from typing import Any
 from homeassistant.components.update import UpdateEntity, UpdateEntityFeature
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
-from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers import device_registry as dr, entity_registry as er
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
@@ -87,12 +87,17 @@ async def async_setup_entry(
     coordinator = entry.runtime_data
     known: set[str] = set()
 
-    # Drop entities of containers that no longer exist in WUD
+    # Drop entities and devices of containers that no longer exist in WUD
     registry = er.async_get(hass)
     current = {_unique_id(entry.entry_id, key) for key in coordinator.data}
     for reg_entry in er.async_entries_for_config_entry(registry, entry.entry_id):
         if reg_entry.domain == "update" and reg_entry.unique_id not in current:
             registry.async_remove(reg_entry.entity_id)
+    devices = dr.async_get(hass)
+    for device in dr.async_entries_for_config_entry(devices, entry.entry_id):
+        idents = {i for d, i in device.identifiers if d == DOMAIN}
+        if entry.entry_id not in idents and not idents & current:
+            devices.async_remove_device(device.id)
 
     @callback
     def add_new() -> None:
@@ -100,6 +105,8 @@ async def async_setup_entry(
         if not new:
             return
         known.update(new)
+        for key in new:
+            _create_device(hass, coordinator, key)
         async_add_entities(WudUpdateEntity(coordinator, key) for key in new)
 
     add_new()
@@ -108,6 +115,56 @@ async def async_setup_entry(
 
 def _unique_id(entry_id: str, key: str) -> str:
     return f"{entry_id}_{key}"
+
+
+# `via_device_id` replaced the `via_device` identifier tuple in HA 2026.8
+_HAS_VIA_DEVICE_ID = "via_device_id" in DeviceInfo.__annotations__
+
+
+def container_device_info(
+    coordinator: WudCoordinator, key: str, container: dict[str, Any]
+) -> DeviceInfo:
+    """Device of one container, linked to the WUD hub device."""
+    entry = coordinator.config_entry
+    info = DeviceInfo(
+        identifiers={(DOMAIN, _unique_id(entry.entry_id, key))},
+        name=container.get("displayName") or container.get("name"),
+        manufacturer="getwud",
+        model=(container.get("image") or {}).get("name"),
+        sw_version=container_versions(container)[0],
+        configuration_url=coordinator.api.url,
+    )
+    if _HAS_VIA_DEVICE_ID:
+        if coordinator.hub_device_id:
+            info["via_device_id"] = coordinator.hub_device_id
+    else:
+        info["via_device"] = (DOMAIN, entry.entry_id)  # type: ignore[typeddict-unknown-key]
+    return info
+
+
+def find_device(
+    devices: dr.DeviceRegistry, identifier: str, entry_id: str
+) -> dr.DeviceEntry | None:
+    """Device of this config entry by identifier (any supported HA version)."""
+    if hasattr(devices, "async_get_device_by_identifier"):  # HA 2026.8+
+        return devices.async_get_device_by_identifier((DOMAIN, identifier), entry_id)
+    return devices.async_get_device(identifiers={(DOMAIN, identifier)})
+
+
+@callback
+def _create_device(hass: HomeAssistant, coordinator: WudCoordinator, key: str) -> None:
+    """Create the device of a new container in the area of the hub."""
+    entry = coordinator.config_entry
+    devices = dr.async_get(hass)
+    if find_device(devices, _unique_id(entry.entry_id, key), entry.entry_id):
+        return
+    device = devices.async_get_or_create(
+        config_entry_id=entry.entry_id,
+        **container_device_info(coordinator, key, coordinator.data[key]),
+    )
+    hub = find_device(devices, entry.entry_id, entry.entry_id)
+    if hub and hub.area_id and not device.area_id:
+        devices.async_update_device(device.id, area_id=hub.area_id)
 
 
 def _short_digest(value: Any) -> str | None:
@@ -179,19 +236,15 @@ class WudUpdateEntity(CoordinatorEntity[WudCoordinator], UpdateEntity):
     """Update entity of one watched container."""
 
     _attr_has_entity_name = True
+    _attr_name = None  # main feature of the container device
 
     def __init__(self, coordinator: WudCoordinator, key: str) -> None:
         super().__init__(coordinator)
         self._key = key
         entry = coordinator.config_entry
         self._attr_unique_id = _unique_id(entry.entry_id, key)
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, entry.entry_id)},
-            name=entry.title,
-            manufacturer="getwud",
-            model="What's Up Docker",
-            sw_version=coordinator.version,
-            configuration_url=coordinator.api.url,
+        self._attr_device_info = container_device_info(
+            coordinator, key, coordinator.data[key]
         )
         self._trigger: dict[str, Any] | None = None
         self._trigger_container_id: str | None = None
@@ -256,8 +309,8 @@ class WudUpdateEntity(CoordinatorEntity[WudCoordinator], UpdateEntity):
             return
         self._last_container = container
         display_name = container.get("displayName") or container.get("name")
-        self._attr_name = display_name
         self._attr_title = display_name
+        self._sync_device(container)
         self._attr_icon, self._attr_entity_picture = resolve_icon(
             container.get("displayIcon")
         )
@@ -283,6 +336,20 @@ class WudUpdateEntity(CoordinatorEntity[WudCoordinator], UpdateEntity):
         self._attr_release_summary = release.summary if release else None
         self._attr_in_progress = self._installing
         self._attr_update_percentage = self._percentage if self._installing else None
+
+    @callback
+    def _sync_device(self, container: dict[str, Any]) -> None:
+        """Keep the device name, image and version in line with WUD."""
+        if self.hass is None or self.device_entry is None:
+            return
+        info = container_device_info(self.coordinator, self._key, container)
+        changes = {
+            field: info[field]
+            for field in ("name", "model", "sw_version")
+            if info.get(field) and getattr(self.device_entry, field) != info[field]
+        }
+        if changes:
+            dr.async_get(self.hass).async_update_device(self.device_entry.id, **changes)
 
     @staticmethod
     def _has_release_target(container: dict[str, Any]) -> bool:

@@ -58,9 +58,9 @@ from .const import (
     URL,
 )
 
-MATTER_ENTITY = "update.wud_matterjs_server"
-EXPLORER_ENTITY = "update.wud_mqtt_explorer"
-PORTAINER_ENTITY = "update.wud_portainer_ce"
+MATTER_ENTITY = "update.matterjs_server"
+EXPLORER_ENTITY = "update.mqtt_explorer"
+PORTAINER_ENTITY = "update.portainer_ce"
 TRIGGER_URL = f"{URL}/api/containers/{MATTER_ID}/triggers/dockercompose/app"
 
 
@@ -176,16 +176,75 @@ async def test_entities(
     assert "trigger" not in state.attributes
 
 
-async def test_device(hass: HomeAssistant, setup_integration: MockConfigEntry) -> None:
-    devices = dr.async_entries_for_config_entry(
-        dr.async_get(hass), setup_integration.entry_id
+async def test_devices(hass: HomeAssistant, setup_integration: MockConfigEntry) -> None:
+    registry = dr.async_get(hass)
+    entry_id = setup_integration.entry_id
+    devices = dr.async_entries_for_config_entry(registry, entry_id)
+    assert len(devices) == 4  # hub + one per container
+
+    hub = registry.async_get_device_by_identifier((DOMAIN, entry_id), entry_id)
+    assert hub is not None
+    assert hub.name == "WUD"
+    assert hub.sw_version == "9.3.0"
+    assert hub.configuration_url == URL
+
+    matter = registry.async_get_device_by_identifier(
+        (DOMAIN, f"{entry_id}_local/matterjs-server"), entry_id
     )
-    assert len(devices) == 1
-    device = devices[0]
-    assert device.identifiers == {(DOMAIN, setup_integration.entry_id)}
-    assert device.name == "WUD"
-    assert device.sw_version == "9.3.0"
-    assert device.configuration_url == URL
+    assert matter is not None
+    assert matter.name == "matterjs-server"
+    assert matter.model == "matter-js/matterjs-server"
+    assert matter.sw_version == "1.4.0"
+    assert matter.via_device_id == hub.id
+
+    # The update entity is the main feature of its container device
+    state = hass.states.get(MATTER_ENTITY)
+    assert state.attributes["friendly_name"] == "matterjs-server"
+    portainer = hass.states.get(PORTAINER_ENTITY)
+    assert portainer.attributes["friendly_name"] == "Portainer CE"
+
+
+async def test_new_container_device_in_hub_area(
+    hass: HomeAssistant,
+    setup_integration: MockConfigEntry,
+    aioclient_mock: AiohttpClientMocker,
+) -> None:
+    registry = dr.async_get(hass)
+    hub = registry.async_get_device_by_identifier(
+        (DOMAIN, setup_integration.entry_id), setup_integration.entry_id
+    )
+    registry.async_update_device(hub.id, area_id="library")
+
+    new = copy.deepcopy(EXPLORER)
+    new.update(id="e" * 64, name="grafana", displayName="grafana")
+    aioclient_mock.get(f"{URL}/api/containers/{new['id']}/triggers", json=[])
+    setup_integration.runtime_data._handle_event(
+        {"type": "wud:container-added", "data": new}
+    )
+    await hass.async_block_till_done(wait_background_tasks=True)
+    device = registry.async_get_device_by_identifier(
+        (DOMAIN, f"{setup_integration.entry_id}_local/grafana"),
+        setup_integration.entry_id,
+    )
+    assert device is not None
+    assert device.area_id == "library"
+
+
+async def test_device_follows_container(
+    hass: HomeAssistant, setup_integration: MockConfigEntry
+) -> None:
+    coordinator = setup_integration.runtime_data
+    data = copy.deepcopy(coordinator.data)
+    data["local/matterjs-server"]["displayName"] = "Matter Server"
+    data["local/matterjs-server"]["updateKind"]["localValue"] = "1.5.0"
+    coordinator.async_set_updated_data(data)
+    await hass.async_block_till_done()
+    device = dr.async_get(hass).async_get_device_by_identifier(
+        (DOMAIN, f"{setup_integration.entry_id}_local/matterjs-server"),
+        setup_integration.entry_id,
+    )
+    assert device.name == "Matter Server"
+    assert device.sw_version == "1.5.0"
 
 
 async def test_release_notes(
