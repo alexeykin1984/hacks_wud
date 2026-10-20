@@ -1,0 +1,6 @@
+{
+  "name": "WUD (What's Up Docker)",
+  "content_in_root": false,
+  "render_readme": true,
+  "homeassistant": "2025.2.0"
+}

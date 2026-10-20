@@ -1,0 +1,57 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "WUD (What's Up Docker)",
+        "description": "Подключение к REST API WUD. Укажите логин/пароль (basic auth) или API-токен.",
+        "data": {
+          "url": "URL",
+          "username": "Логин",
+          "password": "Пароль",
+          "api_token": "API-токен",
+          "verify_ssl": "Проверять SSL-сертификат"
+        },
+        "data_description": {
+          "url": "Адрес WUD, например http://192.168.1.150:3000",
+          "api_token": "Необязательный bearer-токен (вместо логина/пароля)"
+        }
+      },
+      "reconfigure": {
+        "title": "Изменить настройки WUD",
+        "data": {
+          "url": "URL",
+          "username": "Логин",
+          "password": "Пароль",
+          "api_token": "API-токен",
+          "verify_ssl": "Проверять SSL-сертификат"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Не удалось подключиться",
+      "invalid_auth": "Неверные учётные данные",
+      "not_wud": "Сервер не похож на WUD",
+      "unknown": "Непредвиденная ошибка"
+    },
+    "abort": {
+      "already_configured": "Этот сервер WUD уже добавлен",
+      "reconfigure_successful": "Настройки обновлены",
+      "reauth_successful": "Повторная авторизация выполнена"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Параметры WUD",
+        "data": {
+          "scan_interval": "Интервал опроса",
+          "github_token": "Токен GitHub"
+        },
+        "data_description": {
+          "scan_interval": "Интервал полного обновления. Изменения также приходят мгновенно через поток событий WUD.",
+          "github_token": "Необязательно; повышает лимит запросов к GitHub API для описаний релизов"
+        }
+      }
+    }
+  }
+}

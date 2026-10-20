@@ -1,0 +1,11 @@
+{
+  "domain": "wud",
+  "name": "WUD (What's Up Docker)",
+  "codeowners": [],
+  "config_flow": true,
+  "documentation": "https://github.com/getwud/wud",
+  "integration_type": "hub",
+  "iot_class": "local_push",
+  "requirements": [],
+  "version": "0.1.0"
+}
